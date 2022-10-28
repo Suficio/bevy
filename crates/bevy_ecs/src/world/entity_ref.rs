@@ -1107,7 +1107,6 @@ mod tests {
         let test_component_id = world.init_component::<TestComponent>();
 
         let mut entity = world.spawn_empty();
-
         OwningPtr::make(TestComponent(42), |ptr| {
             // SAFETY: `ptr` matches the component id
             unsafe { entity.insert_by_id(test_component_id, ptr) };
