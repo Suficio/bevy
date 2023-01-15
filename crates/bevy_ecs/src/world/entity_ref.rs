@@ -439,14 +439,6 @@ impl<'w> EntityMut<'w> {
         self
     }
 
-    #[deprecated(
-        since = "0.9.0",
-        note = "Use `remove` instead, which now accepts bundles, components, and tuples of bundles and components."
-    )]
-    pub fn remove_bundle<T: Bundle>(&mut self) -> Option<T> {
-        self.remove::<T>()
-    }
-
     // TODO: move to BundleInfo
     /// Removes a [`Bundle`] of components from the entity and returns the bundle.
     ///

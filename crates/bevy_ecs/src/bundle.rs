@@ -741,7 +741,7 @@ impl Bundles {
         for &id in &component_ids {
             components.get_info(id).unwrap_or_else(|| {
                 panic!(
-                    "insert_bundle_by_ids called with component id {id:?} which doesn't exist in this world"
+                    "init_dynamic_info called with component id {id:?} which doesn't exist in this world"
                 )
             });
         }
