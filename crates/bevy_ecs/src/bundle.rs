@@ -704,7 +704,7 @@ impl Bundles {
         self.bundle_ids.get(&type_id).cloned()
     }
 
-    /// Initializes a new [Bundle]
+    /// Initializes a new [`BundleInfo`] for a statically known type.
     pub fn init_info<'a, T: Bundle>(
         &'a mut self,
         components: &mut Components,
@@ -725,14 +725,20 @@ impl Bundles {
         unsafe { self.bundle_infos.get_unchecked(id.0) }
     }
 
-    /// Initializes a new dynamic [Bundle]
+    /// Initializes a new [`BundleInfo`] for a dynamic [`Bundle`].
     ///
     /// Dynamic bundles are not cached and each call to
-    /// [`Bundles::init_dynamic_info`] will instantiate a new [`BundleInfo`]
+    /// [`Bundles::init_dynamic_info`] will initialize a new [`BundleInfo`]
     /// entry.
     ///
-    /// The user should cache the returned [`BundleInfo`] as is appropriate for
-    /// their needs.
+    /// As each call to this function will initialize a new [`BundleInfo`] the
+    /// user should consider caching the returned [`BundleInfo`] and avoid
+    /// calling this function for the same [`Bundle`] more than once.
+    ///
+    /// # Panics
+    ///
+    /// Panics if any of the provided [`ComponentId`]s do not exist in the
+    /// provided [`Components`].
     pub fn init_dynamic_info<'a>(
         &'a mut self,
         components: &mut Components,
@@ -752,7 +758,7 @@ impl Bundles {
         let bundle_info = unsafe { initialize_bundle("<dynamic bundle>", component_ids, id) };
         bundle_infos.push(bundle_info);
 
-        // SAFETY: index either exists, or was initialized
+        // SAFETY: index was initialized just above
         unsafe { bundle_infos.get_unchecked(id.0) }
     }
 }

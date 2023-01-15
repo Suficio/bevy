@@ -375,33 +375,20 @@ impl<'w> EntityMut<'w> {
         self
     }
 
-    /// Inserts a component with the given `value`. Will replace the value if it already existed.
+    /// Inserts a dynamic [`Bundle`] into the entity.
     ///
-    /// **You should prefer to use the typed API [`EntityMut::insert`] where possible and only
-    /// use this in cases where there isn't a Rust type corresponding to the [`ComponentId`].
+    /// This will overwrite any previous value(s) of the same component type.
     ///
-    /// # Safety
-    /// - `value` must be valid for the given [`ComponentId`] of this world
-    /// - storage type must be valid for the given [`ComponentId`] of this world
-    pub unsafe fn insert_by_id(
-        &mut self,
-        bundle_id: BundleId,
-        storage: StorageType,
-        value: OwningPtr<'_>,
-    ) -> &mut Self {
-        // SAFETY: the caller promisees that `value` is valid for the `component_id`
-        self.insert_bundle_by_ids(bundle_id, std::iter::once((storage, value)))
-    }
-
-    /// Inserts a bundle of components into the entity. Will replace the values if they already existed.
+    /// You should prefer to use the typed API [`EntityMut::insert`] where possible and only
+    /// use this in cases where there is no static type corresponding to the [`BundleId`].
     ///
-    /// **You should prefer to use the typed API [`EntityMut::insert_bundle`] where possible and only
-    /// use this in cases where there are no Rust types corresponding to the [`ComponentId`]s.
+    /// To obtain a [`BundleId`] you can call [`World::init_bundle`] or [`World::init_dynamic_bundle`].
     ///
     /// # Safety
-    /// - each value of `components` must be valid for the [`ComponentId`]
-    /// - each storage type of `components` must be valid for the [`ComponentId`]
-    pub unsafe fn insert_bundle_by_ids<'a, I: IntoIterator<Item = (StorageType, OwningPtr<'a>)>>(
+    /// - Each [`OwningPtr`] must be a valid reference to the type represented by [`ComponentId`]
+    /// - Each storage type must be valid for the given [`ComponentId`]
+    /// - Bundle iterator must have identical element order as is defined by [`BundleId`]
+    pub unsafe fn insert_by_id<'a, I: IntoIterator<Item = (StorageType, OwningPtr<'a>)>>(
         &mut self,
         bundle_id: BundleId,
         components: I,
@@ -1093,11 +1080,7 @@ mod tests {
         let mut world = World::new();
         let test_component_id = world.init_component::<TestComponent>();
 
-        let components = &mut world.components;
-        let bundle_id = world
-            .bundles
-            .init_dynamic_info(components, vec![test_component_id])
-            .id();
+        let bundle_id = world.init_dynamic_bundle(vec![test_component_id]).id();
 
         let mut entity = world.spawn_empty();
         OwningPtr::make(TestComponent(42), |ptr| {
@@ -1105,8 +1088,7 @@ mod tests {
             unsafe {
                 entity.insert_by_id(
                     bundle_id,
-                    <TestComponent as Component>::Storage::STORAGE_TYPE,
-                    ptr,
+                    vec![(<TestComponent as Component>::Storage::STORAGE_TYPE, ptr)],
                 )
             };
         });
@@ -1124,18 +1106,14 @@ mod tests {
         let test_component_value = TestComponent(42);
         let test_component_2_value = TestComponent2(84);
 
-        let components = &mut world.components;
-        let bundle_id = world
-            .bundles
-            .init_dynamic_info(components, component_ids)
-            .id();
+        let bundle_id = world.init_dynamic_bundle(component_ids).id();
 
         let mut entity = world.spawn_empty();
         OwningPtr::make(test_component_value, |ptr1| {
             OwningPtr::make(test_component_2_value, |ptr2| {
                 // SAFETY: `ptr1` and `ptr2` match the component ids
                 unsafe {
-                    entity.insert_bundle_by_ids(
+                    entity.insert_by_id(
                         bundle_id,
                         vec![
                             (<TestComponent as Component>::Storage::STORAGE_TYPE, ptr1),

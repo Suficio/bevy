@@ -172,12 +172,32 @@ impl World {
             .init_component_with_descriptor(&mut self.storages, descriptor)
     }
 
+    /// Initializes a new [`BundleInfo`] for a statically known type.
+    ///
+    /// The returned [`BundleInfo`] can be used to dynamically insert components into entities
+    /// using [`EntityMut::insert_by_id`] and [`EntityMut::insert_bundle_by_id`].
     pub fn init_bundle<T: Bundle>(&mut self) -> &BundleInfo {
         let components = &mut self.components;
         let storages = &mut self.storages;
         self.bundles.init_info::<T>(components, storages)
     }
 
+    /// Initializes a new [`BundleInfo`] for a dynamic type.
+    ///
+    /// The returned [`BundleInfo`] can be used to dynamically insert components into entities
+    /// using [`EntityMut::insert_by_id`] and [`EntityMut::insert_bundle_by_id`].
+    ///
+    /// Dynamic bundles are not cached and each call to [`init_dynamic_bundle`]
+    /// will initialize a new [`BundleInfo`] entry.
+    ///
+    /// As each call to this function will initialize a new [`BundleInfo`] the
+    /// user should consider caching the returned [`BundleInfo`] and avoid
+    /// calling this function for the same [`Bundle`] more than once.
+    ///
+    /// # Panics
+    ///
+    /// Panics if any of the provided [`ComponentId`]s do not exist in the
+    /// provided [`World`].
     pub fn init_dynamic_bundle(&mut self, component_ids: Vec<ComponentId>) -> &BundleInfo {
         let components = &mut self.components;
         self.bundles.init_dynamic_info(components, component_ids)
