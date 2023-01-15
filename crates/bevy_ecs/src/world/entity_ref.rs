@@ -1005,10 +1005,11 @@ mod tests {
         assert_eq!(a, vec![1]);
     }
 
-    #[derive(Component)]
+    #[derive(Component, Clone, Copy, Debug, PartialEq)]
     struct TestComponent(u32);
 
-    #[derive(Component)]
+    #[derive(Component, Clone, Copy, Debug, PartialEq)]
+    #[component(storage = "SparseSet")]
     struct TestComponent2(u32);
 
     #[test]
@@ -1097,7 +1098,7 @@ mod tests {
     }
 
     #[test]
-    fn entity_mut_insert_bundle_by_ids() {
+    fn entity_mut_insert_bundle_by_id() {
         let mut world = World::new();
         let test_component_id = world.init_component::<TestComponent>();
         let test_component_2_id = world.init_component::<TestComponent2>();
@@ -1124,7 +1125,57 @@ mod tests {
             });
         });
 
-        assert_eq!(entity.get::<TestComponent>().unwrap().0, 42);
-        assert_eq!(entity.get::<TestComponent2>().unwrap().0, 84);
+        let dynamic_res: Vec<_> = world
+            .query::<(&TestComponent, &TestComponent2)>()
+            .iter(&world)
+            .collect();
+
+        assert_eq!(dynamic_res, vec![(&TestComponent(42), &TestComponent2(84))]);
+
+        // Compare with `World` generated using static type equivalents
+        let mut static_world = World::new();
+
+        static_world.spawn((test_component_value, test_component_2_value));
+        let static_res: Vec<_> = static_world
+            .query::<(&TestComponent, &TestComponent2)>()
+            .iter(&static_world)
+            .collect();
+
+        assert_eq!(dynamic_res, static_res);
+
+        // Compare with `World` generated using static type equivalents and dynamic inserts
+        let mut static_world = World::new();
+        let bundle_id = static_world
+            .init_bundle::<(TestComponent, TestComponent2)>()
+            .id();
+
+        // Check that `BundleId` is retained
+        let test_bundle_id = static_world
+            .init_bundle::<(TestComponent, TestComponent2)>()
+            .id();
+        assert_eq!(bundle_id, test_bundle_id);
+
+        let mut entity = static_world.spawn_empty();
+        OwningPtr::make(test_component_value, |ptr1| {
+            OwningPtr::make(test_component_2_value, |ptr2| {
+                // SAFETY: `ptr1` and `ptr2` match the component ids
+                unsafe {
+                    entity.insert_by_id(
+                        bundle_id,
+                        vec![
+                            (<TestComponent as Component>::Storage::STORAGE_TYPE, ptr1),
+                            (<TestComponent2 as Component>::Storage::STORAGE_TYPE, ptr2),
+                        ],
+                    )
+                };
+            });
+        });
+
+        let static_res: Vec<_> = static_world
+            .query::<(&TestComponent, &TestComponent2)>()
+            .iter(&static_world)
+            .collect();
+
+        assert_eq!(dynamic_res, static_res);
     }
 }
