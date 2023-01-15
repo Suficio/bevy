@@ -198,7 +198,7 @@ unsafe impl<C: Component> Bundle for C {
 impl<C: Component> DynamicBundle for C {
     #[inline]
     fn get_components(self, func: &mut impl FnMut(StorageType, OwningPtr<'_>)) {
-        OwningPtr::make(self, func);
+        OwningPtr::make(self, |ptr| func(C::Storage::STORAGE_TYPE, ptr));
     }
 }
 
@@ -691,7 +691,6 @@ impl<'a, 'b> BundleSpawner<'a, 'b> {
 pub struct Bundles {
     bundle_infos: Vec<BundleInfo>,
     bundle_ids: HashMap<TypeId, BundleId>,
-    bundle_ids_dynamic: HashMap<Vec<ComponentId>, BundleId>,
 }
 
 impl Bundles {
@@ -705,7 +704,8 @@ impl Bundles {
         self.bundle_ids.get(&type_id).cloned()
     }
 
-    pub(crate) fn init_info<'a, T: Bundle>(
+    /// Initializes a new [Bundle]
+    pub fn init_info<'a, T: Bundle>(
         &'a mut self,
         components: &mut Components,
         storages: &mut Storages,
@@ -725,27 +725,35 @@ impl Bundles {
         unsafe { self.bundle_infos.get_unchecked(id.0) }
     }
 
-    // SAFETY: `ComponentIds` must all be valid in the world of these `Bundles`
-    pub(crate) unsafe fn init_info_dynamic<'a>(
+    /// Initializes a new dynamic [Bundle]
+    ///
+    /// Dynamic bundles are not cached and each call to
+    /// [`Bundles::init_dynamic_info`] will instantiate a new [`BundleInfo`]
+    /// entry.
+    ///
+    /// The user should cache the returned [`BundleInfo`] as is appropriate for
+    /// their needs.
+    pub fn init_dynamic_info<'a>(
         &'a mut self,
         components: &mut Components,
         component_ids: Vec<ComponentId>,
     ) -> &'a BundleInfo {
-        let bundle_infos = &mut self.bundle_infos;
-        // PERF: use `raw_entry` to avoid clone when it is stabilized
-        let id = self
-            .bundle_ids_dynamic
-            .entry(component_ids.clone())
-            .or_insert_with(|| {
-                let id = BundleId(bundle_infos.len());
-                // SAFETY: `component_ids` are valid as promised in the functions safety contract
-                let bundle_info =
-                    initialize_bundle("<dynamic bundle>", component_ids, id, components);
-                bundle_infos.push(bundle_info);
-                id
+        for &id in &component_ids {
+            components.get_info(id).unwrap_or_else(|| {
+                panic!(
+                    "insert_bundle_by_ids called with component id {id:?} which doesn't exist in this world"
+                )
             });
+        }
+
+        let bundle_infos = &mut self.bundle_infos;
+        let id = BundleId(bundle_infos.len());
+        // SAFETY: `component_ids` are valid as they were just checked
+        let bundle_info = unsafe { initialize_bundle("<dynamic bundle>", component_ids, id) };
+        bundle_infos.push(bundle_info);
+
         // SAFETY: index either exists, or was initialized
-        self.bundle_infos.get_unchecked(id.0)
+        unsafe { bundle_infos.get_unchecked(id.0) }
     }
 }
 

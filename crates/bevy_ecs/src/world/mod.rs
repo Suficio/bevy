@@ -9,7 +9,7 @@ pub use world_cell::*;
 
 use crate::{
     archetype::{ArchetypeComponentId, ArchetypeId, ArchetypeRow, Archetypes},
-    bundle::{Bundle, BundleInserter, BundleSpawner, Bundles},
+    bundle::{Bundle, BundleInfo, BundleInserter, BundleSpawner, Bundles},
     change_detection::{MutUntyped, TicksMut},
     component::{
         Component, ComponentDescriptor, ComponentId, ComponentInfo, ComponentTicks, Components,
@@ -170,6 +170,17 @@ impl World {
     ) -> ComponentId {
         self.components
             .init_component_with_descriptor(&mut self.storages, descriptor)
+    }
+
+    pub fn init_bundle<'a, T: Bundle>(&'a mut self) -> &'a BundleInfo {
+        let components = &mut self.components;
+        let storages = &mut self.storages;
+        self.bundles.init_info::<T>(components, storages)
+    }
+
+    pub fn init_dynamic_bundle(&mut self, component_ids: Vec<ComponentId>) -> &BundleInfo {
+        let components = &mut self.components;
+        self.bundles.init_dynamic_info(components, component_ids)
     }
 
     /// Returns the [`ComponentId`] of the given [`Component`] type `T`.
