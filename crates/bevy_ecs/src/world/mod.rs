@@ -172,7 +172,7 @@ impl World {
             .init_component_with_descriptor(&mut self.storages, descriptor)
     }
 
-    pub fn init_bundle<'a, T: Bundle>(&'a mut self) -> &'a BundleInfo {
+    pub fn init_bundle<T: Bundle>(&mut self) -> &BundleInfo {
         let components = &mut self.components;
         let storages = &mut self.storages;
         self.bundles.init_info::<T>(components, storages)
