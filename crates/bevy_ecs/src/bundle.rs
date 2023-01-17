@@ -690,7 +690,12 @@ impl<'a, 'b> BundleSpawner<'a, 'b> {
 #[derive(Default)]
 pub struct Bundles {
     bundle_infos: Vec<BundleInfo>,
+    /// Cache static [`BundleId`]
     bundle_ids: HashMap<TypeId, BundleId>,
+    /// Cache dynamic [`BundleId`] with multiple components
+    dynamic_bundle_ids: HashMap<Vec<ComponentId>, BundleId>,
+    /// Cache optimized dynamic [`BundleId`] with single component
+    dynamic_component_bundle_ids: HashMap<ComponentId, (StorageType, BundleId)>,
 }
 
 impl Bundles {
@@ -702,6 +707,13 @@ impl Bundles {
     #[inline]
     pub fn get_id(&self, type_id: TypeId) -> Option<BundleId> {
         self.bundle_ids.get(&type_id).cloned()
+    }
+
+    #[inline]
+    pub fn get_component(&self, component_id: ComponentId) -> Option<(StorageType, BundleId)> {
+        self.dynamic_component_bundle_ids
+            .get(&component_id)
+            .cloned()
     }
 
     /// Initializes a new [`BundleInfo`] for a statically known type.
@@ -727,14 +739,6 @@ impl Bundles {
 
     /// Initializes a new [`BundleInfo`] for a dynamic [`Bundle`].
     ///
-    /// Dynamic bundles are not cached and each call to
-    /// [`Bundles::init_dynamic_info`] will initialize a new [`BundleInfo`]
-    /// entry.
-    ///
-    /// As each call to this function will initialize a new [`BundleInfo`] the
-    /// user should consider caching the returned [`BundleInfo`] and avoid
-    /// calling this function for the same [`Bundle`] more than once.
-    ///
     /// # Panics
     ///
     /// Panics if any of the provided [`ComponentId`]s do not exist in the
@@ -744,22 +748,33 @@ impl Bundles {
         components: &mut Components,
         component_ids: Vec<ComponentId>,
     ) -> &'a BundleInfo {
-        for &id in &component_ids {
-            components.get_info(id).unwrap_or_else(|| {
-                panic!(
-                    "init_dynamic_info called with component id {id:?} which doesn't exist in this world"
-                )
-            });
-        }
-
         let bundle_infos = &mut self.bundle_infos;
-        let id = BundleId(bundle_infos.len());
-        // SAFETY: `component_ids` are valid as they were just checked
-        let bundle_info = unsafe { initialize_bundle("<dynamic bundle>", component_ids, id) };
-        bundle_infos.push(bundle_info);
+        // We optimize the case where the `Bundle` only has one element
+        let id = if component_ids.len() == 1 {
+            let component_id = component_ids[0];
+            self.dynamic_component_bundle_ids
+                .entry(component_id)
+                .or_insert_with(|| {
+                    let id = initialize_dynamic_bundle(bundle_infos, components, component_ids);
+                    // SAFETY: Existence of component was checked in `initialize_dynamic_bundle`
+                    let info = unsafe { components.get_info_unchecked(component_id) };
+                    (info.storage_type(), id)
+                })
+                .1
+        } else {
+            match self.dynamic_bundle_ids.get(&component_ids) {
+                Some(&id) => id,
+                None => {
+                    let id =
+                        initialize_dynamic_bundle(bundle_infos, components, component_ids.clone());
+                    self.dynamic_bundle_ids.insert(component_ids, id);
+                    id
+                }
+            }
+        };
 
         // SAFETY: index was initialized just above
-        unsafe { bundle_infos.get_unchecked(id.0) }
+        unsafe { self.bundle_infos.get_unchecked(id.0) }
     }
 }
 
@@ -780,4 +795,28 @@ unsafe fn initialize_bundle(
     );
 
     BundleInfo { id, component_ids }
+}
+
+/// Asserts that all components are part of [`Components`]
+/// and initializes a [`BundleInfo`].
+fn initialize_dynamic_bundle(
+    bundle_infos: &mut Vec<BundleInfo>,
+    components: &Components,
+    component_ids: Vec<ComponentId>,
+) -> BundleId {
+    // Assert component existence
+    component_ids.iter().for_each(|&id| {
+        components.get_info(id).unwrap_or_else(|| {
+            panic!(
+                "init_dynamic_info called with component id {id:?} which doesn't exist in this world"
+            )
+        });
+    });
+
+    let id = BundleId(bundle_infos.len());
+    // SAFETY: `component_ids` are valid as they were just checked
+    let bundle_info = unsafe { initialize_bundle("<dynamic bundle>", component_ids, id) };
+    bundle_infos.push(bundle_info);
+
+    id
 }

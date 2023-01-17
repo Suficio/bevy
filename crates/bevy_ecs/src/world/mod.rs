@@ -175,7 +175,7 @@ impl World {
     /// Initializes a new [`BundleInfo`] for a statically known type.
     ///
     /// The returned [`BundleInfo`] can be used to dynamically insert components into entities
-    /// using [`EntityMut::insert_by_id`] and [`EntityMut::insert_by_id`].
+    /// using [`EntityMut::insert_by_id`] and [`EntityMut::insert_bundle_by_id`].
     pub fn init_bundle<T: Bundle>(&mut self) -> &BundleInfo {
         let components = &mut self.components;
         let storages = &mut self.storages;
@@ -185,14 +185,7 @@ impl World {
     /// Initializes a new [`BundleInfo`] for a dynamic type.
     ///
     /// The returned [`BundleInfo`] can be used to dynamically insert components into entities
-    /// using [`EntityMut::insert_by_id`] and [`EntityMut::insert_by_id`].
-    ///
-    /// Dynamic bundles are not cached and each call to this function will
-    /// initialize a new [`BundleInfo`] entry.
-    ///
-    /// As each call to this function will initialize a new [`BundleInfo`] the
-    /// user should consider caching the returned [`BundleInfo`] and avoid
-    /// calling this function for the same [`Bundle`] more than once.
+    /// using [`EntityMut::insert_by_id`] and [`EntityMut::insert_bundle_by_id`].
     ///
     /// # Panics
     ///
