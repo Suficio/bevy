@@ -1138,7 +1138,32 @@ mod tests {
     }
 
     #[test]
-    fn entity_mut_cached_bundle_id() {}
+    fn entity_mut_cached_bundle_id() {
+        let mut world = World::new();
+        let test_component_id = world.init_component::<TestComponent>();
+        let test_component_2_id = world.init_component::<TestComponent2>();
+
+        assert_eq!(
+            world.init_bundle::<TestComponent>().id(),
+            world.init_bundle::<TestComponent>().id()
+        );
+
+        // Test single component case
+        assert_eq!(
+            world.init_dynamic_bundle(vec![test_component_id]).id(),
+            world.init_dynamic_bundle(vec![test_component_id]).id()
+        );
+
+        // Test dynamic component case
+        assert_eq!(
+            world
+                .init_dynamic_bundle(vec![test_component_id, test_component_2_id])
+                .id(),
+            world
+                .init_dynamic_bundle(vec![test_component_id, test_component_2_id])
+                .id()
+        );
+    }
 
     #[test]
     fn entity_mut_insert_by_id() {
