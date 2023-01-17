@@ -391,7 +391,11 @@ impl<'w> EntityMut<'w> {
         component_id: ComponentId,
         component: OwningPtr<'a>,
     ) -> &mut Self {
-        let (storage_type, id) = self.world.bundles.get_component(component_id).unwrap();
+        let (storage_type, id) = self.world.bundles.get_component(component_id).unwrap_or_else(|| {
+            panic!(
+                "`insert_by_id` called with component id {component_id:?} which wasn't registered as a bundle, register it using `World::init_dynamic_bundle`"
+            )
+        });
         self.insert_bundle_by_id_unchecked(id, Some((storage_type, component)))
     }
 
@@ -415,7 +419,11 @@ impl<'w> EntityMut<'w> {
         components: I,
     ) -> &mut Self {
         let world_components = &self.world.components;
-        let bundle_info = self.world.bundles.get(bundle_id).unwrap();
+        let bundle_info = self.world.bundles.get(bundle_id).unwrap_or_else(|| {
+            panic!(
+                "`insert_bundle_by_id` called with bundle id {bundle_id:?} which wasn't registered, register it using `World::init_dynamic_bundle`"
+            )
+        });
 
         let iter = components
             .into_iter()
@@ -472,7 +480,11 @@ impl<'w> EntityMut<'w> {
 
         let change_tick = self.world.change_tick();
 
-        let bundle_info = self.world.bundles.get(bundle_id).unwrap();
+        let bundle_info = self.world.bundles.get(bundle_id).unwrap_or_else(|| {
+            panic!(
+                "`insert_bundle_by_id_unchecked` called with bundle id {bundle_id:?} which wasn't registered, register it using `World::init_dynamic_bundle`"
+            )
+        });
         let mut bundle_inserter = bundle_info.get_bundle_inserter(
             &mut self.world.entities,
             &mut self.world.archetypes,
