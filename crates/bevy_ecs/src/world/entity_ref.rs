@@ -797,6 +797,12 @@ fn contains_component_with_id(
 }
 
 /// Inserts a dynamic [`Bundle`] into the entity.
+///
+/// # Safety
+///
+/// - [`OwningPtr`] and [`StorageType`] iterators must correspond to the
+/// [`BundleInfo`] used to construct [`BundleInserter`]
+/// - [`Entity`] must correspond to [`EntityLocation`]
 unsafe fn insert_dynamic_bundle<
     'a,
     I: Iterator<Item = OwningPtr<'a>>,
@@ -824,7 +830,7 @@ unsafe fn insert_dynamic_bundle<
         components: storage_types.zip(components),
     };
 
-    // SAFETY: location matches current entity. The `bundle` matches `bundle_info` components as promised by the caller.
+    // SAFETY: location matches current entity.
     bundle_inserter.insert(entity, location, bundle)
 }
 
