@@ -799,11 +799,10 @@ fn contains_component_with_id(
 /// Inserts a dynamic [`Bundle`] into the entity.
 unsafe fn insert_dynamic_bundle<
     'a,
-    'b,
     I: Iterator<Item = OwningPtr<'a>>,
     S: Iterator<Item = StorageType>,
 >(
-    mut bundle_inserter: BundleInserter<'_, 'b>,
+    mut bundle_inserter: BundleInserter<'_, '_>,
     entity: Entity,
     location: EntityLocation,
     components: I,
