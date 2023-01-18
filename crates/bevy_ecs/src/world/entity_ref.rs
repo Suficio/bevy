@@ -1,6 +1,6 @@
 use crate::{
     archetype::{Archetype, ArchetypeId, Archetypes},
-    bundle::{Bundle, BundleId, BundleInfo, DynamicBundle},
+    bundle::{Bundle, BundleInfo, BundleInserter, DynamicBundle},
     change_detection::{MutUntyped, TicksMut},
     component::{
         Component, ComponentId, ComponentStorage, ComponentTicks, Components, StorageType,
@@ -391,12 +391,30 @@ impl<'w> EntityMut<'w> {
         component_id: ComponentId,
         component: OwningPtr<'a>,
     ) -> &mut Self {
-        let (storage_type, id) = self.world.bundles.get_component(component_id).unwrap_or_else(|| {
-            panic!(
-                "`insert_by_id` called with component id {component_id:?} which wasn't registered as a bundle, register it using `World::init_dynamic_bundle`"
-            )
-        });
-        self.insert_bundle_by_id_unchecked(id, Some((storage_type, component)))
+        let change_tick = self.world.change_tick();
+
+        let bundles = &mut self.world.bundles;
+        let components = &mut self.world.components;
+
+        let (bundle_info, storage_type) = bundles.init_component_info(components, component_id);
+        let bundle_inserter = bundle_info.get_bundle_inserter(
+            &mut self.world.entities,
+            &mut self.world.archetypes,
+            &mut self.world.components,
+            &mut self.world.storages,
+            self.location.archetype_id,
+            change_tick,
+        );
+
+        self.location = insert_dynamic_bundle(
+            bundle_inserter,
+            self.entity,
+            self.location,
+            Some(component).into_iter(),
+            Some(*storage_type).into_iter(),
+        );
+
+        self
     }
 
     /// Inserts a dynamic [`Bundle`] into the entity.
@@ -410,82 +428,20 @@ impl<'w> EntityMut<'w> {
     /// To obtain a [`BundleId`] you can call [`World::init_bundle`] or [`World::init_dynamic_bundle`].
     ///
     /// # Safety
-    /// - [`BundleId`] must be from the same world as [`EntityMut`]
+    /// - Each [`ComponentId`] must be from the same world as [`EntityMut`]
     /// - Each [`OwningPtr`] must be a valid reference to the type represented by [`ComponentId`]
-    /// - Bundle iterator must have identical length and element order as defined by [`BundleId`]
-    pub unsafe fn insert_bundle_by_id<'a, I: IntoIterator<Item = OwningPtr<'a>>>(
+    pub unsafe fn insert_bundle_by_id<'a, I: Iterator<Item = OwningPtr<'a>>>(
         &mut self,
-        bundle_id: BundleId,
-        components: I,
+        component_ids: &Vec<ComponentId>,
+        iter_components: I,
     ) -> &mut Self {
-        let world_components = &self.world.components;
-        let bundle_info = self.world.bundles.get(bundle_id).unwrap_or_else(|| {
-            panic!(
-                "`insert_bundle_by_id` called with bundle id {bundle_id:?} which wasn't registered, register it using `World::init_dynamic_bundle`"
-            )
-        });
-
-        let iter = components
-            .into_iter()
-            .zip(bundle_info.component_ids.iter())
-            .map(|(ptr, &component_id)| {
-                // SAFETY: If BundleId exists for this world then the components in it
-                // are guaranteed to exist, and user promises to use the same world.
-                let info = world_components.get_info_unchecked(component_id);
-                (info.storage_type(), ptr)
-            })
-            .collect::<Vec<_>>();
-
-        self.insert_bundle_by_id_unchecked(bundle_id, iter)
-    }
-
-    /// Inserts a dynamic [`Bundle`] into the entity.
-    ///
-    /// This will overwrite any previous value(s) of the same component type.
-    ///
-    /// Prefer to use checked API [`EntityMut::insert_bundle_by_id`] unless you have the storage
-    /// type information at the call site.
-    /// If your [`Bundle`] only has one component, use the cached API [`EntityMut::insert_by_id`].
-    ///
-    /// To obtain a [`BundleId`] you can call [`World::init_bundle`] or [`World::init_dynamic_bundle`].
-    ///
-    /// # Safety
-    /// - [`BundleId`] must be from the same world as [`EntityMut`]
-    /// - Each [`OwningPtr`] must be a valid reference to the type represented by [`ComponentId`]
-    /// - Each storage type must be valid for the given [`ComponentId`]
-    /// - Bundle iterator must have identical length and element order as is defined by [`BundleId`]
-    pub unsafe fn insert_bundle_by_id_unchecked<
-        'a,
-        I: IntoIterator<Item = (StorageType, OwningPtr<'a>)>,
-    >(
-        &mut self,
-        bundle_id: BundleId,
-        components: I,
-    ) -> &mut Self {
-        struct DynamicInsertBundle<'a, I: Iterator<Item = (StorageType, OwningPtr<'a>)>> {
-            components: I,
-        }
-
-        impl<'a, I: Iterator<Item = (StorageType, OwningPtr<'a>)>> DynamicBundle
-            for DynamicInsertBundle<'a, I>
-        {
-            fn get_components(self, func: &mut impl FnMut(StorageType, OwningPtr<'_>)) {
-                self.components.for_each(|(t, ptr)| func(t, ptr));
-            }
-        }
-
-        let bundle = DynamicInsertBundle {
-            components: components.into_iter(),
-        };
-
         let change_tick = self.world.change_tick();
 
-        let bundle_info = self.world.bundles.get(bundle_id).unwrap_or_else(|| {
-            panic!(
-                "`insert_bundle_by_id_unchecked` called with bundle id {bundle_id:?} which wasn't registered, register it using `World::init_dynamic_bundle`"
-            )
-        });
-        let mut bundle_inserter = bundle_info.get_bundle_inserter(
+        let bundles = &mut self.world.bundles;
+        let components = &mut self.world.components;
+
+        let (bundle_info, storage_types) = bundles.init_dynamic_info(components, component_ids);
+        let bundle_inserter = bundle_info.get_bundle_inserter(
             &mut self.world.entities,
             &mut self.world.archetypes,
             &mut self.world.components,
@@ -493,8 +449,14 @@ impl<'w> EntityMut<'w> {
             self.location.archetype_id,
             change_tick,
         );
-        // SAFETY: location matches current entity. The `bundle` matches `bundle_info` components as promised by the caller.
-        self.location = bundle_inserter.insert(self.entity, self.location, bundle);
+
+        self.location = insert_dynamic_bundle(
+            bundle_inserter,
+            self.entity,
+            self.location,
+            iter_components,
+            storage_types.iter().map(Clone::clone),
+        );
 
         self
     }
@@ -834,6 +796,39 @@ fn contains_component_with_id(
     world.archetypes[location.archetype_id].contains(component_id)
 }
 
+/// Inserts a dynamic [`Bundle`] into the entity.
+unsafe fn insert_dynamic_bundle<
+    'a,
+    'b,
+    I: Iterator<Item = OwningPtr<'a>>,
+    S: Iterator<Item = StorageType>,
+>(
+    mut bundle_inserter: BundleInserter<'_, 'b>,
+    entity: Entity,
+    location: EntityLocation,
+    components: I,
+    storage_types: S,
+) -> EntityLocation {
+    struct DynamicInsertBundle<'a, I: Iterator<Item = (StorageType, OwningPtr<'a>)>> {
+        components: I,
+    }
+
+    impl<'a, I: Iterator<Item = (StorageType, OwningPtr<'a>)>> DynamicBundle
+        for DynamicInsertBundle<'a, I>
+    {
+        fn get_components(self, func: &mut impl FnMut(StorageType, OwningPtr<'_>)) {
+            self.components.for_each(|(t, ptr)| func(t, ptr));
+        }
+    }
+
+    let bundle = DynamicInsertBundle {
+        components: storage_types.zip(components),
+    };
+
+    // SAFETY: location matches current entity. The `bundle` matches `bundle_info` components as promised by the caller.
+    bundle_inserter.insert(entity, location, bundle)
+}
+
 /// Removes a bundle from the given archetype and returns the resulting archetype (or None if the
 /// removal was invalid). in the event that adding the given bundle does not result in an Archetype
 /// change. Results are cached in the Archetype Graph to avoid redundant work.
@@ -1150,39 +1145,9 @@ mod tests {
     }
 
     #[test]
-    fn entity_mut_cached_bundle_id() {
-        let mut world = World::new();
-        let test_component_id = world.init_component::<TestComponent>();
-        let test_component_2_id = world.init_component::<TestComponent2>();
-
-        assert_eq!(
-            world.init_bundle::<TestComponent>().id(),
-            world.init_bundle::<TestComponent>().id()
-        );
-
-        // Test single component case
-        assert_eq!(
-            world.init_dynamic_bundle(vec![test_component_id]).id(),
-            world.init_dynamic_bundle(vec![test_component_id]).id()
-        );
-
-        // Test dynamic component case
-        assert_eq!(
-            world
-                .init_dynamic_bundle(vec![test_component_id, test_component_2_id])
-                .id(),
-            world
-                .init_dynamic_bundle(vec![test_component_id, test_component_2_id])
-                .id()
-        );
-    }
-
-    #[test]
     fn entity_mut_insert_by_id() {
         let mut world = World::new();
         let test_component_id = world.init_component::<TestComponent>();
-
-        let bundle_id = world.init_dynamic_bundle(vec![test_component_id]).id();
 
         let mut entity = world.spawn_empty();
         OwningPtr::make(TestComponent(42), |ptr| {
@@ -1199,7 +1164,7 @@ mod tests {
         let mut entity = world.spawn_empty();
         OwningPtr::make(TestComponent(84), |ptr| {
             // SAFETY: `ptr` matches the component id
-            unsafe { entity.insert_bundle_by_id(bundle_id, vec![ptr]) };
+            unsafe { entity.insert_bundle_by_id(&vec![test_component_id], vec![ptr].into_iter()) };
         });
 
         let components: Vec<_> = world.query::<&TestComponent>().iter(&world).collect();
@@ -1217,13 +1182,11 @@ mod tests {
         let test_component_value = TestComponent(42);
         let test_component_2_value = TestComponent2(84);
 
-        let bundle_id = world.init_dynamic_bundle(component_ids).id();
-
         let mut entity = world.spawn_empty();
         OwningPtr::make(test_component_value, |ptr1| {
             OwningPtr::make(test_component_2_value, |ptr2| {
                 // SAFETY: `ptr1` and `ptr2` match the component ids
-                unsafe { entity.insert_bundle_by_id(bundle_id, vec![ptr1, ptr2]) };
+                unsafe { entity.insert_bundle_by_id(&component_ids, vec![ptr1, ptr2].into_iter()) };
             });
         });
 
@@ -1241,33 +1204,6 @@ mod tests {
         let mut static_world = World::new();
 
         static_world.spawn((test_component_value, test_component_2_value));
-        let static_components: Vec<_> = static_world
-            .query::<(&TestComponent, &TestComponent2)>()
-            .iter(&static_world)
-            .collect();
-
-        assert_eq!(dynamic_components, static_components);
-
-        // Compare with `World` generated using static type equivalents and dynamic inserts
-        let mut static_world = World::new();
-        let bundle_id = static_world
-            .init_bundle::<(TestComponent, TestComponent2)>()
-            .id();
-
-        // Check that `BundleId` is retained
-        let test_bundle_id = static_world
-            .init_bundle::<(TestComponent, TestComponent2)>()
-            .id();
-        assert_eq!(bundle_id, test_bundle_id);
-
-        let mut entity = static_world.spawn_empty();
-        OwningPtr::make(test_component_value, |ptr1| {
-            OwningPtr::make(test_component_2_value, |ptr2| {
-                // SAFETY: `ptr1` and `ptr2` match the component ids
-                unsafe { entity.insert_bundle_by_id(bundle_id, vec![ptr1, ptr2]) };
-            });
-        });
-
         let static_components: Vec<_> = static_world
             .query::<(&TestComponent, &TestComponent2)>()
             .iter(&static_world)

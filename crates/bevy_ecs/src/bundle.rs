@@ -15,7 +15,8 @@ use crate::{
 };
 use bevy_ecs_macros::all_tuples;
 use bevy_ptr::OwningPtr;
-use std::{any::TypeId, collections::HashMap};
+use bevy_utils::HashMap;
+use std::any::TypeId;
 
 /// The `Bundle` trait enables insertion and removal of [`Component`]s from an entity.
 ///
@@ -693,9 +694,9 @@ pub struct Bundles {
     /// Cache static [`BundleId`]
     bundle_ids: HashMap<TypeId, BundleId>,
     /// Cache dynamic [`BundleId`] with multiple components
-    dynamic_bundle_ids: HashMap<Vec<ComponentId>, BundleId>,
+    dynamic_bundle_ids: HashMap<Vec<ComponentId>, (BundleId, Vec<StorageType>)>,
     /// Cache optimized dynamic [`BundleId`] with single component
-    dynamic_component_bundle_ids: HashMap<ComponentId, (StorageType, BundleId)>,
+    dynamic_component_bundle_ids: HashMap<ComponentId, (BundleId, StorageType)>,
 }
 
 impl Bundles {
@@ -709,15 +710,8 @@ impl Bundles {
         self.bundle_ids.get(&type_id).cloned()
     }
 
-    #[inline]
-    pub fn get_component(&self, component_id: ComponentId) -> Option<(StorageType, BundleId)> {
-        self.dynamic_component_bundle_ids
-            .get(&component_id)
-            .cloned()
-    }
-
     /// Initializes a new [`BundleInfo`] for a statically known type.
-    pub fn init_info<'a, T: Bundle>(
+    pub(crate) fn init_info<'a, T: Bundle>(
         &'a mut self,
         components: &mut Components,
         storages: &mut Storages,
@@ -743,38 +737,56 @@ impl Bundles {
     ///
     /// Panics if any of the provided [`ComponentId`]s do not exist in the
     /// provided [`Components`].
-    pub fn init_dynamic_info<'a>(
-        &'a mut self,
+    pub(crate) fn init_dynamic_info(
+        &mut self,
         components: &mut Components,
-        component_ids: Vec<ComponentId>,
-    ) -> &'a BundleInfo {
+        component_ids: &Vec<ComponentId>,
+    ) -> (&BundleInfo, &Vec<StorageType>) {
         let bundle_infos = &mut self.bundle_infos;
-        // We optimize the case where the `Bundle` only has one element
-        let id = if component_ids.len() == 1 {
-            let component_id = component_ids[0];
-            self.dynamic_component_bundle_ids
-                .entry(component_id)
-                .or_insert_with(|| {
-                    let id = initialize_dynamic_bundle(bundle_infos, components, component_ids);
-                    // SAFETY: Existence of component was checked in `initialize_dynamic_bundle`
-                    let info = unsafe { components.get_info_unchecked(component_id) };
-                    (info.storage_type(), id)
-                })
-                .1
-        } else {
-            match self.dynamic_bundle_ids.get(&component_ids) {
-                Some(&id) => id,
-                None => {
-                    let id =
-                        initialize_dynamic_bundle(bundle_infos, components, component_ids.clone());
-                    self.dynamic_bundle_ids.insert(component_ids, id);
-                    id
-                }
-            }
-        };
 
-        // SAFETY: index was initialized just above
-        unsafe { self.bundle_infos.get_unchecked(id.0) }
+        // Use `raw_entry_mut` to avoid cloning `component_ids` to access `Entry`
+        let (_, (bundle_id, storage_types)) = self
+            .dynamic_bundle_ids
+            .raw_entry_mut()
+            .from_key(component_ids)
+            .or_insert_with(|| {
+                (
+                    component_ids.clone(),
+                    initialize_dynamic_bundle(bundle_infos, components, component_ids.clone()),
+                )
+            });
+
+        // SAFETY: index either exists, or was initialized
+        let bundle_info = unsafe { bundle_infos.get_unchecked(bundle_id.0) };
+
+        (bundle_info, storage_types)
+    }
+
+    /// Initializes a new [`BundleInfo`] for a dynamic [`Bundle`] with single component.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the provided [`ComponentId`] does not exist in the provided [`Components`].
+    pub(crate) fn init_component_info(
+        &mut self,
+        components: &mut Components,
+        component_id: ComponentId,
+    ) -> (&BundleInfo, &StorageType) {
+        let bundle_infos = &mut self.bundle_infos;
+        let (bundle_id, storage_types) = self
+            .dynamic_component_bundle_ids
+            .entry(component_id)
+            .or_insert_with(|| {
+                let (id, storage_type) =
+                    initialize_dynamic_bundle(bundle_infos, components, vec![component_id]);
+                // SAFETY: `storage_type` guaranteed to have length 1
+                (id, storage_type[0])
+            });
+
+        // SAFETY: index either exists, or was initialized
+        let bundle_info = unsafe { bundle_infos.get_unchecked(bundle_id.0) };
+
+        (bundle_info, storage_types)
     }
 }
 
@@ -803,20 +815,20 @@ fn initialize_dynamic_bundle(
     bundle_infos: &mut Vec<BundleInfo>,
     components: &Components,
     component_ids: Vec<ComponentId>,
-) -> BundleId {
+) -> (BundleId, Vec<StorageType>) {
     // Assert component existence
-    component_ids.iter().for_each(|&id| {
+    let storage_types = component_ids.iter().map(|&id| {
         components.get_info(id).unwrap_or_else(|| {
             panic!(
                 "init_dynamic_info called with component id {id:?} which doesn't exist in this world"
             )
-        });
-    });
+        }).storage_type()
+    }).collect();
 
     let id = BundleId(bundle_infos.len());
     // SAFETY: `component_ids` are valid as they were just checked
     let bundle_info = unsafe { initialize_bundle("<dynamic bundle>", component_ids, id) };
     bundle_infos.push(bundle_info);
 
-    id
+    (id, storage_types)
 }
