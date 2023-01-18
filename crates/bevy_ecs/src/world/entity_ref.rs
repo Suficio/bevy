@@ -379,8 +379,7 @@ impl<'w> EntityMut<'w> {
     ///
     /// This will overwrite any previous value(s) of the same component type.
     ///
-    /// You should prefer to use the typed API [`EntityMut::insert`] where possible and only
-    /// use this in cases where there is no static type corresponding to the [`BundleId`].
+    /// You should prefer to use the typed API [`EntityMut::insert`] where possible.
     ///
     /// # Safety
     ///
@@ -421,11 +420,8 @@ impl<'w> EntityMut<'w> {
     ///
     /// This will overwrite any previous value(s) of the same component type.
     ///
-    /// You should prefer to use the typed API [`EntityMut::insert`] where possible and only
-    /// use this in cases where there is no static type corresponding to the [`BundleId`].
+    /// You should prefer to use the typed API [`EntityMut::insert`] where possible.
     /// If your [`Bundle`] only has one component, use the cached API [`EntityMut::insert_by_id`].
-    ///
-    /// To obtain a [`BundleId`] you can call [`World::init_bundle`] or [`World::init_dynamic_bundle`].
     ///
     /// # Safety
     /// - Each [`ComponentId`] must be from the same world as [`EntityMut`]
