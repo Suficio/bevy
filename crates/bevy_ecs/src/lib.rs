@@ -54,6 +54,7 @@ pub use bevy_ecs_macros::all_tuples;
 mod tests {
     use crate as bevy_ecs;
     use crate::prelude::Or;
+    use crate::query::WorldQuery;
     use crate::{
         bundle::Bundle,
         component::{Component, ComponentId},
@@ -899,7 +900,10 @@ mod tests {
             }
         }
 
-        fn get_filtered<F: ReadOnlyWorldQuery>(world: &mut World) -> Vec<Entity> {
+        fn get_filtered<F: ReadOnlyWorldQuery>(world: &mut World) -> Vec<Entity>
+        where
+            <F as WorldQuery>::Config: Default,
+        {
             world
                 .query_filtered::<Entity, F>()
                 .iter(world)
@@ -982,7 +986,10 @@ mod tests {
             }
         }
 
-        fn get_filtered<F: ReadOnlyWorldQuery>(world: &mut World) -> Vec<Entity> {
+        fn get_filtered<F: ReadOnlyWorldQuery>(world: &mut World) -> Vec<Entity>
+        where
+            <F as WorldQuery>::Config: Default,
+        {
             world
                 .query_filtered::<Entity, F>()
                 .iter(world)
