@@ -771,7 +771,7 @@ impl Bundles {
         &mut self,
         components: &mut Components,
         component_id: ComponentId,
-    ) -> (&BundleInfo, &StorageType) {
+    ) -> (&BundleInfo, StorageType) {
         let bundle_infos = &mut self.bundle_infos;
         let (bundle_id, storage_types) = self
             .dynamic_component_bundle_ids
@@ -786,7 +786,7 @@ impl Bundles {
         // SAFETY: index either exists, or was initialized
         let bundle_info = unsafe { bundle_infos.get_unchecked(bundle_id.0) };
 
-        (bundle_info, storage_types)
+        (bundle_info, *storage_types)
     }
 }
 

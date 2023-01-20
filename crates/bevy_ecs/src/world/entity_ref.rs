@@ -410,7 +410,7 @@ impl<'w> EntityMut<'w> {
             self.entity,
             self.location,
             Some(component).into_iter(),
-            Some(*storage_type).into_iter(),
+            Some(storage_type).into_iter(),
         );
 
         self
@@ -422,6 +422,8 @@ impl<'w> EntityMut<'w> {
     ///
     /// You should prefer to use the typed API [`EntityMut::insert`] where possible.
     /// If your [`Bundle`] only has one component, use the cached API [`EntityMut::insert_by_id`].
+    ///
+    /// If possible, pass a sorted slice of `ComponentId` to maximize caching potential.
     ///
     /// # Safety
     /// - Each [`ComponentId`] must be from the same world as [`EntityMut`]
@@ -451,7 +453,7 @@ impl<'w> EntityMut<'w> {
             self.entity,
             self.location,
             iter_components,
-            storage_types.iter().map(Clone::clone),
+            storage_types.iter().cloned(),
         );
 
         self
