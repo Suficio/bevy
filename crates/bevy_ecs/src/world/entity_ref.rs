@@ -430,7 +430,7 @@ impl<'w> EntityMut<'w> {
     /// - Each [`OwningPtr`] must be a valid reference to the type represented by [`ComponentId`]
     pub unsafe fn insert_bundle_by_id<'a, I: Iterator<Item = OwningPtr<'a>>>(
         &mut self,
-        component_ids: &Vec<ComponentId>,
+        component_ids: &[ComponentId],
         iter_components: I,
     ) -> &mut Self {
         let change_tick = self.world.change_tick();
@@ -1167,7 +1167,7 @@ mod tests {
         let mut entity = world.spawn_empty();
         OwningPtr::make(TestComponent(84), |ptr| {
             // SAFETY: `ptr` matches the component id
-            unsafe { entity.insert_bundle_by_id(&vec![test_component_id], vec![ptr].into_iter()) };
+            unsafe { entity.insert_bundle_by_id(&[test_component_id], [ptr].into_iter()) };
         });
 
         let components: Vec<_> = world.query::<&TestComponent>().iter(&world).collect();
@@ -1181,7 +1181,7 @@ mod tests {
         let test_component_id = world.init_component::<TestComponent>();
         let test_component_2_id = world.init_component::<TestComponent2>();
 
-        let component_ids = vec![test_component_id, test_component_2_id];
+        let component_ids = [test_component_id, test_component_2_id];
         let test_component_value = TestComponent(42);
         let test_component_2_value = TestComponent2(84);
 
@@ -1189,7 +1189,7 @@ mod tests {
         OwningPtr::make(test_component_value, |ptr1| {
             OwningPtr::make(test_component_2_value, |ptr2| {
                 // SAFETY: `ptr1` and `ptr2` match the component ids
-                unsafe { entity.insert_bundle_by_id(&component_ids, vec![ptr1, ptr2].into_iter()) };
+                unsafe { entity.insert_bundle_by_id(&component_ids, [ptr1, ptr2].into_iter()) };
             });
         });
 

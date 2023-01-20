@@ -15,8 +15,8 @@ use crate::{
 };
 use bevy_ecs_macros::all_tuples;
 use bevy_ptr::OwningPtr;
-use bevy_utils::HashMap;
-use std::any::TypeId;
+use bevy_utils::hashbrown::HashMap;
+use std::{any::TypeId, hash};
 
 /// The `Bundle` trait enables insertion and removal of [`Component`]s from an entity.
 ///
@@ -694,9 +694,11 @@ pub struct Bundles {
     /// Cache static [`BundleId`]
     bundle_ids: HashMap<TypeId, BundleId>,
     /// Cache dynamic [`BundleId`] with multiple components
-    dynamic_bundle_ids: HashMap<Vec<ComponentId>, (BundleId, Vec<StorageType>)>,
+    dynamic_bundle_ids:
+        HashMap<Vec<ComponentId>, (BundleId, Vec<StorageType>), fxhash::FxBuildHasher>,
     /// Cache optimized dynamic [`BundleId`] with single component
-    dynamic_component_bundle_ids: HashMap<ComponentId, (BundleId, StorageType)>,
+    dynamic_component_bundle_ids:
+        HashMap<ComponentId, (BundleId, StorageType), fxhash::FxBuildHasher>,
 }
 
 impl Bundles {
@@ -740,19 +742,21 @@ impl Bundles {
     pub(crate) fn init_dynamic_info(
         &mut self,
         components: &mut Components,
-        component_ids: &Vec<ComponentId>,
+        component_ids: &[ComponentId],
     ) -> (&BundleInfo, &Vec<StorageType>) {
         let bundle_infos = &mut self.bundle_infos;
 
         // Use `raw_entry_mut` to avoid cloning `component_ids` to access `Entry`
+        let hash = make_hash(self.dynamic_bundle_ids.hasher(), component_ids);
         let (_, (bundle_id, storage_types)) = self
             .dynamic_bundle_ids
             .raw_entry_mut()
-            .from_key(component_ids)
+            .from_hash(hash, |k| component_ids.eq(k))
             .or_insert_with(|| {
+                let vec = Vec::from(component_ids);
                 (
-                    component_ids.clone(),
-                    initialize_dynamic_bundle(bundle_infos, components, component_ids.clone()),
+                    vec.clone(),
+                    initialize_dynamic_bundle(bundle_infos, components, vec),
                 )
             });
 
@@ -831,4 +835,13 @@ fn initialize_dynamic_bundle(
     bundle_infos.push(bundle_info);
 
     (id, storage_types)
+}
+
+fn make_hash(
+    hash_builder: &hash::BuildHasherDefault<fxhash::FxHasher>,
+    components: &[ComponentId],
+) -> u64 {
+    let mut state = hash::BuildHasher::build_hasher(hash_builder);
+    hash::Hash::hash(&components, &mut state);
+    hash::Hasher::finish(&state)
 }
