@@ -1594,4 +1594,94 @@ mod tests {
 
         crate::system::assert_is_system(client_system);
     }
+
+    // Implement an example dynamic query to demonstrate how data can be passed
+    // into `WorldQuery` using `Config`.
+    #[test]
+    fn query_dynamic() {
+        use bevy_ptr::Ptr;
+
+        struct DynamicQuery {};
+
+        // Pipe methods into `&T` implementaiton
+        impl WorldQuery for DynamicQuery {
+            type Fetch<'w> = ReadFetch<'w, Ptr>;
+            type Item<'w> = &'w Ptr;
+            type ReadOnly = Self;
+            type State = ComponentId;
+            type Config = ();
+
+            fn shrink<'wlong: 'wshort, 'wshort>(item: Self::Item<'wlong>) -> Self::Item<'wshort> {
+                todo!()
+            }
+
+            unsafe fn init_fetch<'w>(
+                world: &'w World,
+                state: &Self::State,
+                last_run: Tick,
+                this_run: Tick,
+            ) -> Self::Fetch<'w> {
+                todo!()
+            }
+
+            unsafe fn clone_fetch<'w>(fetch: &Self::Fetch<'w>) -> Self::Fetch<'w> {
+                todo!()
+            }
+
+            const IS_DENSE: bool;
+
+            const IS_ARCHETYPAL: bool;
+
+            unsafe fn set_archetype<'w>(
+                fetch: &mut Self::Fetch<'w>,
+                state: &Self::State,
+                archetype: &'w Archetype,
+                table: &'w Table,
+            ) {
+                todo!()
+            }
+
+            unsafe fn set_table<'w>(
+                fetch: &mut Self::Fetch<'w>,
+                state: &Self::State,
+                table: &'w Table,
+            ) {
+                todo!()
+            }
+
+            unsafe fn fetch<'w>(
+                fetch: &mut Self::Fetch<'w>,
+                entity: Entity,
+                table_row: TableRow,
+            ) -> Self::Item<'w> {
+                todo!()
+            }
+
+            fn update_component_access(
+                state: &Self::State,
+                access: &mut FilteredAccess<ComponentId>,
+            ) {
+                todo!()
+            }
+
+            fn update_archetype_component_access(
+                state: &Self::State,
+                archetype: &Archetype,
+                access: &mut Access<ArchetypeComponentId>,
+            ) {
+                todo!()
+            }
+
+            fn init_state(config: Self::Config, world: &mut World) -> Self::State {
+                todo!()
+            }
+
+            fn matches_component_set(
+                state: &Self::State,
+                set_contains_id: &impl Fn(ComponentId) -> bool,
+            ) -> bool {
+                todo!()
+            }
+        }
+    }
 }
